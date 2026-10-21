@@ -1,0 +1,12 @@
+{
+  "name": "usage-bar-mods",
+  "description": "Claude Code mods by rabbit-ninja",
+  "owner": { "name": "rabbit-ninja" },
+  "plugins": [
+    {
+      "name": "usage-bar",
+      "source": "./",
+      "description": "Shows your 5-hour session and weekly usage limits in a band above the prompt"
+    }
+  ]
+}
