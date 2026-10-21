@@ -1,4 +1,4 @@
-import type { Register, SessionRateLimit } from 'claude-code'
+import type { Register, SessionCost, SessionRateLimit } from 'claude-code'
 
 // Cells in each progress bar
 const CELLS = 10
@@ -35,11 +35,13 @@ function countdown(resetsAt: string | undefined, now: number): string {
 const LABELS: Record<string, string> = {
   five_hour: 'Session',
   seven_day: 'Week',
+  spend_limit: 'Spend',
 }
 
 export const register: Register = on => {
-  // The windows from the last reading, shared by the hooks below
+  // The windows and session cost from the last reading, shared by the hooks below
   let limits: SessionRateLimit[] = []
+  let cost: SessionCost | undefined
 
   // Keep only the windows worth showing, session first
   const keep = (all: SessionRateLimit[]) =>
@@ -52,24 +54,36 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const usage = await $.session.usage()
     limits = keep(usage.rateLimits)
+    cost = usage.cost
     $.clock.every(60000, () => $.ui.invalidate('ui.render'))
     $.ui.invalidate('ui.render')
     return next(e)
   })
 
-  // Refresh whenever a turn ends or a window's percent changes
+  // Refresh whenever a turn ends, a window's percent changes or the cost grows
   on('session.measure', async ($, e, next) => {
     limits = keep(e.rateLimits)
+    cost = e.cost
     $.ui.invalidate('ui.render')
     return next(e)
   })
 
   // Draw the band above the prompt
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    // Nothing to show off a subscription, or before the first reading
-    if (limits.length === 0 || e.props.hasSurvey) return next(e)
-
+    if (e.props.hasSurvey) return next(e)
     const { Box, Text } = $.ui.resolve(e)
+
+    // No limit windows (API key, Team or Enterprise usage-based seat): show the session's cost instead
+    if (limits.length === 0) {
+      if (!cost) return next(e)
+      return (
+        <Box flexDirection="row" columnGap={1}>
+          <Text dimColor>Session</Text>
+          <Text>${cost.usd.toFixed(2)}</Text>
+        </Box>
+      )
+    }
+
     const now = await $.clock.now()
 
     return (

@@ -11,7 +11,10 @@ A [Claude Code](https://claude.com/claude-code) mod that shows your **5-hour ses
 ## Requirements
 
 - Claude Code **2.1.286 or later** (update the desktop app if needed)
-- A Pro or Max plan. On an API key there are no plan limits, so the band stays hidden.
+- What it shows depends on the account:
+  - **Pro or Max:** session and weekly bars.
+  - **Behind a Claude gateway with a spend limit:** a spend bar.
+  - **API key, Console, or Team/Enterprise usage-based seat:** no plan limits are reported, so it shows this session's cost (as `/cost` totals it).
 - It draws in the **Code tab** of the desktop app and in the terminal. It does not appear in regular chats or Cowork.
 
 ## Install
@@ -34,7 +37,7 @@ Disable or uninstall it under **+ → Plugins → Manage plugins**, or run `/plu
 
 ## Safety
 
-Mods run code with your permissions. This one is small and readable: see [`hooks/register.tsx`](hooks/register.tsx). It only reads usage figures and draws text.
+Mods run code with your permissions. This one is small and readable: see [`hooks/register.tsx`](hooks/register.tsx). It only reads usage and cost figures and draws text.
 
 ## License
 
