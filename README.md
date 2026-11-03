@@ -2,11 +2,15 @@
 
 A [Claude Code](https://claude.com/claude-code) mod that shows your **5-hour session** and **weekly** usage limits in a slim band above the prompt, with reset countdowns.
 
-![usage-bar showing session and weekly usage above the prompt](assets/demo.png)
+![usage-bar showing session and weekly usage above the prompt](assets/sub-demo.png)
 
 - Bars turn yellow at 60% and red at 80%.
 - Updates after each turn, and the countdowns refresh every minute.
 - Reads the same usage data as `/usage`. No network calls of its own, no data leaves your machine.
+
+![usage-bar showing API usage and spend tracking above the prompt](assets/api-demo.png)
+
+- Shows session usage cost.
 
 ## Requirements
 
