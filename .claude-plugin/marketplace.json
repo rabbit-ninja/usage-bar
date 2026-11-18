@@ -6,7 +6,7 @@
     {
       "name": "usage-bar",
       "source": "./",
-      "description": "Shows your 5-hour session and weekly usage limits in a band above the prompt"
+      "description": "Shows your usage limits, context window fill and a one-click Compact button in a slim band above the prompt"
     }
   ]
 }

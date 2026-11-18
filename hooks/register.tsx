@@ -1,7 +1,10 @@
-import type { Register, SessionCost, SessionRateLimit } from 'claude-code'
+import type { Register, RenderChildren, SessionCost, SessionRateLimit } from 'claude-code'
 
 // Cells in each progress bar
 const CELLS = 10
+
+// Cells each label takes, so the bars line up down the rows
+const LABEL_WIDTH = 8
 
 // Turn a percentage into a bar such as ████░░░░░░
 function bar(percent: number): string {
@@ -94,77 +97,89 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Draw the band above the prompt
+  // Draw the band above the prompt: limits on the first row, context on the second
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     // Nothing to show before the first reading or an update
     if (e.props.hasSurvey) return next(e)
-    if (limits.length === 0 && !cost && ctx === undefined && latest === undefined) return next(e)
+    // A cost only counts where it is a real charge: on a subscription it is always
+    // $0, and before the first reading a Pro session has no windows yet either
+    const charged = limits.length === 0 && cost !== undefined && cost.usd > 0 ? cost : undefined
+    const hasFirstRow = limits.length > 0 || charged !== undefined
+    if (!hasFirstRow && ctx === undefined && latest === undefined) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const now = await $.clock.now()
 
+    // One item: a fixed-width label, then the rest. It never shrinks, so a narrow
+    // band moves whole items onto the next row instead of breaking their text
+    const item = (key: string, label: string, rest: RenderChildren) => (
+      <Box key={key} flexDirection="row" flexShrink={0} columnGap={1} alignItems="center">
+        <Box width={LABEL_WIDTH}>
+          <Text dimColor>{label}</Text>
+        </Box>
+        {rest}
+      </Box>
+    )
+    const meter = (percent: number) => [
+      <Text key="bar" color={colorFor(percent)}>{bar(percent)}</Text>,
+      <Text key="pct">{Math.round(percent)}%</Text>,
+    ]
+
+    const compact = async () => {
+      if (compacting) return
+      compacting = true
+      $.ui.invalidate('ui.render')
+      try {
+        // The same path as typing /compact: queued until the session is idle
+        await $.command.run({ command: 'compact' })
+      } catch (err) {
+        $.ui.toast(`Couldn't compact: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        compacting = false
+        $.ui.invalidate('ui.render')
+      }
+    }
+
     return (
-      <Box flexDirection="row" justifyContent="space-between">
-        <Box flexDirection="row" columnGap={3}>
-          {/* No limit windows (API key, Team or Enterprise usage-based seat): the session's cost instead */}
-          {limits.length === 0 && cost && (
-            <Box flexDirection="row" columnGap={1}>
-              <Text dimColor>Session</Text>
-              <Text>${cost.usd.toFixed(2)}</Text>
-            </Box>
-          )}
-          {limits.map(l => (
-            <Box key={l.kind} flexDirection="row" columnGap={1}>
-              <Text dimColor>{LABELS[l.kind]}</Text>
-              <Text color={colorFor(l.percentUsed)}>{bar(l.percentUsed)}</Text>
-              <Text>{Math.round(l.percentUsed)}%</Text>
-              <Text dimColor>{countdown(l.resetsAt, now)}</Text>
-            </Box>
-          ))}
-        </Box>
-        <Box flexDirection="row" columnGap={3}>
-          {latest !== undefined && (
-            <Button
-              key="update"
-              label={`↑ v${latest}`}
-              onPress={() =>
-                $.ui.toast(`usage-bar v${latest} is out. Update it under + → Plugins → Manage plugins, or run /plugin in a terminal.`, {
-                  timeoutMs: 8000,
-                })
-              }
-            />
-          )}
-          {ctx !== undefined && (
-            <Box flexDirection="row" columnGap={1}>
-              <Text dimColor>Context</Text>
-              <Text color={colorFor(ctx)}>{bar(ctx)}</Text>
-              <Text>{Math.round(ctx)}%</Text>
-              {compacting ? (
-                <Text dimColor>Compacting…</Text>
-              ) : (
-                <Button
-                  key="compact"
-                  label="Compact"
-                  onPress={async () => {
-                    if (compacting) return
-                    compacting = true
-                    $.ui.invalidate('ui.render')
-                    try {
-                      await $.session.compact()
-                      ctx = (await $.session.usage()).context.percent
-                    } catch {
-                      // Rejects while a turn runs
-                      $.ui.toast('Compact once the current turn finishes')
-                    } finally {
-                      compacting = false
-                      $.ui.invalidate('ui.render')
-                    }
-                  }}
-                />
-              )}
-            </Box>
-          )}
-        </Box>
+      // rowGap "sm": breathing room around the desktop's taller native button; the terminal draws it as 0 rows
+      <Box flexDirection="column" rowGap="sm">
+        {hasFirstRow && (
+          <Box flexDirection="row" flexWrap="wrap" columnGap={4}>
+            {/* No limit windows (API key, Team or Enterprise usage-based seat): the session's cost instead */}
+            {charged && item('cost', 'Session', [<Text key="usd">~${charged.usd.toFixed(2)}</Text>])}
+            {limits.map(l =>
+              item(l.kind, LABELS[l.kind] ?? l.kind, [
+                ...meter(l.percentUsed),
+                <Text key="reset" dimColor>{countdown(l.resetsAt, now)}</Text>,
+              ]),
+            )}
+          </Box>
+        )}
+        {(ctx !== undefined || latest !== undefined) && (
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+            {ctx !== undefined &&
+              item('context', 'Context', [
+                ...meter(ctx),
+                compacting ? (
+                  <Text key="compacting">Compacting…</Text>
+                ) : (
+                  <Button key="compact" label="Compact" onPress={compact} />
+                ),
+              ])}
+            {latest !== undefined && (
+              <Button
+                key="update"
+                onPress={() =>
+                  $.ui.toast(`usage-bar v${latest} is out. Update it under + → Plugins → Manage plugins, or run /plugin in a terminal.`, {
+                    timeoutMs: 8000,
+                  })
+                }
+              >
+                <Text color="green">↑ v{latest}</Text>
+              </Button>
+            )}
+          </Box>
+        )}
       </Box>
     )
   })

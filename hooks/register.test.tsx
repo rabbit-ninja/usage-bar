@@ -37,7 +37,7 @@ test('nothing is drawn before the first reading', async $ => {
   }
 })
 
-test('limits on the left, context and Compact on the right', async ($, on) => {
+test('limits on the first row, context and Compact on the second', async ($, on) => {
   engine(on)
   await measure($, 55)
 
@@ -67,15 +67,14 @@ test('Compact is disabled while it runs, then comes back', async ($, on) => {
   engine(on)
   let calls = 0
   let finish!: () => void
-  on('session.compact', () => {
+  const commands: string[] = []
+  on('command.run', (_: unknown, e: any) => {
     calls++
+    commands.push(e.command)
     return new Promise(resolve => {
-      finish = () => resolve({ skip: 'test' })
+      finish = () => resolve({})
     })
   })
-  on('session.usage', () => ({
-    value: { startedAt: 0, context: { window: 200000, percent: 12 }, rateLimits: LIMITS },
-  }))
   await measure($, 90)
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
@@ -88,17 +87,16 @@ test('Compact is disabled while it runs, then comes back', async ($, on) => {
 
   finish()
   await pressed
-  expect(calls).toBe(1)
+  expect(commands).toEqual(['compact'])
   expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^12%$/ })).toBeDefined()
   await ui.unmount()
 })
 
 test('a refused compaction shows a toast and keeps the button', async ($, on) => {
   engine(on)
   const toasts: string[] = []
-  on('session.compact', () => {
-    throw new Error('a turn is running')
+  on('command.run', () => {
+    throw new Error('not enough messages to compact')
   })
   on('ui.toast', (_, e: any) => {
     toasts.push(typeof e === 'string' ? e : e.text)
@@ -108,7 +106,9 @@ test('a refused compaction shows a toast and keeps the button', async ($, on) =>
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   await ui.press({ key: 'compact' })
-  expect(toasts).toEqual(['Compact once the current turn finishes'])
+  // The real reason, never a guess about a running turn
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]).toMatch(/^Couldn't compact: /)
   expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
   await ui.unmount()
 })
@@ -175,7 +175,7 @@ for (const [name, local, remote] of [
   })
 }
 
-test('on an API key the session cost sits left, context and Compact right', async ($, on) => {
+test('on an API key the session cost on the first row, context and Compact on the second', async ($, on) => {
   engine(on)
   await $.session.measure({
     context: { window: 200000, percent: 30 },
@@ -186,7 +186,7 @@ test('on an API key the session cost sits left, context and Compact right', asyn
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect(await ui.find({ type: 'Text', text: '$1.23' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '~$1.23' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Context' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
     await ui.unmount()
@@ -200,5 +200,37 @@ test('a gateway spend limit draws a Spend bar', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: 'Spend' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^85%$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a subscription before its first reading shows no price', async ($, on) => {
+  engine(on)
+  // Pro or Max: no windows yet, and the plan's cost is always $0
+  await $.session.measure({
+    context: { window: 200000 },
+    rateLimits: [],
+    cost: { usd: 0 },
+    changed: ['cost'],
+  } as any)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /\$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'compact' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a spend limit stays a bar even when the session has a cost', async ($, on) => {
+  engine(on)
+  await $.session.measure({
+    context: { window: 200000, percent: 18 },
+    rateLimits: [{ kind: 'spend_limit', percentUsed: 112, resetsAt: '2099-01-01T00:00:00Z' }],
+    cost: { usd: 5 },
+    changed: ['rateLimits'],
+  } as any)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^█+$/ }))?.props.color).toBe('red')
+  expect(await ui.find({ type: 'Text', text: /^112%$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\$/ })).toBeUndefined()
   await ui.unmount()
 })
