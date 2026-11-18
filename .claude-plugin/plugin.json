@@ -1,6 +1,6 @@
 {
   "name": "usage-bar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Shows your 5-hour session and weekly usage limits in a slim band above the prompt",
   "author": { "name": "rabbit-ninja" },
   "homepage": "https://github.com/rabbit-ninja/usage-bar",
